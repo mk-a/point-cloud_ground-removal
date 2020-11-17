@@ -7,9 +7,9 @@ import argparse
 def main():
     in_path = Path(args.in_file)
     if args.out_file is None:
-        out_path = in_path.with_name(in_path.stem + "no_ground.las")
+        out_path = in_path.with_name(in_path.stem + "_no_ground.las")
     else:
-        out_path = args.out_fil
+        out_path = args.out_file
     las = laspy.file.File(in_path, mode="r")
     pc = np.column_stack((las.x, las.y, las.z))
     min_x, min_y, min_z = pc.min(axis=0)
@@ -18,7 +18,9 @@ def main():
     d_x /= args.x
     d_y /= args.y
     ground = np.full(len(las), False)
+    pt_src_id = np.zeros(len(las), dtype=np.uint16)
     ce = 0.015
+    n = 0
     for i in range(args.x):
         for j in range(args.y):
             mask = np.argwhere(
@@ -30,14 +32,34 @@ def main():
             if mask.size == 0:
                 continue
             local_pc = pc[mask]
-            print(local_pc.shape)
             local_min = local_pc.min(axis=0)[2]
             local_max = local_pc.max(axis=0)[2]
-            C_he = local_min + d_z * (1 - (max_z - local_max) / d_z) + ce
+            C_he = local_min + d_z * (1 - (max_z - local_max) / d_z) * ce
+            print(
+                "{:3d} {:3d}\t{:.1f} {:.1f} {:.1f}".format(
+                    i, j, local_min, C_he, local_max
+                ),
+                end="\r",
+            )
+            # print(i, j)
+            # print(
+            #     "l_min: {:.1f}\tl_max: {:.1f}\tmax_z: {:.1f}".format(
+            #         local_min, local_max, max_z
+            #     )
+            # )
+            # print("(max_z - local_max)", (max_z - local_max))
+            # print("(max_z - local_max) / d_z", (max_z - local_max) / d_z)
+            # print("d_z * (1 - (max_z - local_max) / d_z)", d_z * (1 - (max_z - local_max) / d_z))
+            # print("C_he", C_he)
+
             ground[mask[local_pc[:, 2] <= C_he]] = True
+            pt_src_id[mask[local_pc[:, 2] <= C_he]] = n
+            n += 1
     las2 = laspy.file.File(out_path, mode="w", header=las.header)
     las2.points = las.points
     las2.Classification[ground] = 2
+    las2.Classification[np.logical_not(ground)] = 1
+    las2.pt_src_id = pt_src_id
     las.close()
     las2.close()
 
