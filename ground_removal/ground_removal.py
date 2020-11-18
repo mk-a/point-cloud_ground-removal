@@ -17,10 +17,13 @@ def main():
     d_x, d_y, d_z = pc.max(axis=0) - pc.min(axis=0)
     d_x /= args.x
     d_y /= args.y
-    ground = np.full(len(las), False)
+    # ground = np.full(len(las), False)
+    ground = np.full(len(las), args.c_n_steps, dtype=np.uint16)
+    # ground = np.ones(len(las), dtype=np.uint16)
     pt_src_id = np.zeros(len(las), dtype=np.uint16)
-    ce = 0.015
     n = 0
+    c_values = np.linspace(args.c_max, args.c_min, args.c_n_steps)
+    print(list(zip(range(args.c_n_steps - 1, -1, -1), c_values)))
     for i in range(args.x):
         for j in range(args.y):
             mask = np.argwhere(
@@ -31,34 +34,26 @@ def main():
             ).flatten()
             if mask.size == 0:
                 continue
+            print("{:03d} {:03d}".format(i, j), end="\r")
             local_pc = pc[mask]
             local_min = local_pc.min(axis=0)[2]
             local_max = local_pc.max(axis=0)[2]
-            C_he = local_min + d_z * (1 - (max_z - local_max) / d_z) * ce
-            print(
-                "{:3d} {:3d}\t{:.1f} {:.1f} {:.1f}".format(
-                    i, j, local_min, C_he, local_max
-                ),
-                end="\r",
-            )
-            # print(i, j)
-            # print(
-            #     "l_min: {:.1f}\tl_max: {:.1f}\tmax_z: {:.1f}".format(
-            #         local_min, local_max, max_z
-            #     )
-            # )
-            # print("(max_z - local_max)", (max_z - local_max))
-            # print("(max_z - local_max) / d_z", (max_z - local_max) / d_z)
-            # print("d_z * (1 - (max_z - local_max) / d_z)", d_z * (1 - (max_z - local_max) / d_z))
-            # print("C_he", C_he)
+            C_list = []
+            for c in c_values:
+                C_list.append(local_min + d_z * (1 - (max_z - local_max) / d_z) * c)
+            # print(C_list)
+            # print(list(enumerate(sorted(C_list)))[::-1])
 
-            ground[mask[local_pc[:, 2] <= C_he]] = True
-            pt_src_id[mask[local_pc[:, 2] <= C_he]] = n
+            # for k, C_he in list(enumerate(sorted(C_list)))[::-1]:
+            for k, C_he in zip(range(9, -1, -1), C_list):
+                ground[mask[local_pc[:, 2] <= C_he]] = k
+            # C_he = local_min + d_z * (1 - (max_z - local_max) / d_z) * args.c
+            # ground[mask[local_pc[:, 2] <= C_he]] = 2
+            pt_src_id[mask] = n
             n += 1
     las2 = laspy.file.File(out_path, mode="w", header=las.header)
     las2.points = las.points
-    las2.Classification[ground] = 2
-    las2.Classification[np.logical_not(ground)] = 1
+    las2.Classification = ground
     las2.pt_src_id = pt_src_id
     las.close()
     las2.close()
@@ -78,6 +73,21 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-y", type=int, default=50, help="number of division along the y axis"
+    )
+    parser.add_argument(
+        "-c_max", type=float, default=0.030, help="height coefficient max value"
+    )
+    parser.add_argument(
+        "-c_min", type=float, default=0.001, help="height coefficient min value"
+    )
+    parser.add_argument(
+        "-c_n_steps",
+        type=int,
+        default=10,
+        help="height coefficient number of steps value",
+    )
+    parser.add_argument(
+        "-c", type=float, default=0.015, help="height coefficient value"
     )
     args = parser.parse_args()
     main()
